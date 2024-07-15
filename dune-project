@@ -16,4 +16,12 @@
 (package
  (name repostbot)
  (synopsis "Bot for forwarding user's posts from VK to Telegram chat")
- (depends ocaml dune))
+ (depends
+  ocaml
+  dune
+  lwt
+  cohttp-lwt-unix
+  vkashka
+  sexplib
+  lwt_ppx
+  ppx_deriving_yojson))
