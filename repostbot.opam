@@ -32,3 +32,6 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/dx3mod/repostbot.git"
+pin-depends: [
+  [ "vkashka.0.1.0" "git+https://github.com/dx3mod/vkashka.git" ]
+]
