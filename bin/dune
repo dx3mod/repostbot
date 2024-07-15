@@ -1,4 +1,6 @@
 (executable
  (public_name repostbot)
  (name main)
- (libraries repostbot))
+ (libraries lib vkashka)
+ (preprocess
+  (pps lwt_ppx)))

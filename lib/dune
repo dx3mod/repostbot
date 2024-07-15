@@ -1,2 +1,11 @@
 (library
- (name repostbot))
+ (name lib)
+ (libraries
+  lwt
+  cohttp-lwt-unix
+  unix
+  vkashka
+  sexplib
+  ppx_deriving_yojson.runtime)
+ (preprocess
+  (pps lwt_ppx ppx_sexp_conv ppx_deriving_yojson)))
