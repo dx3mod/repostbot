@@ -33,6 +33,7 @@ let repost (post : Vkashka.Wall.Record.t) =
     @@ List.map
          (function
            | Vkashka.Media.Attachment.Photo _ -> "photo"
+           | Vkashka.Media.Attachment.Video _ -> "video"
            | Vkashka.Media.Attachment.Other other -> other)
          attachments
   in
@@ -51,6 +52,9 @@ let repost (post : Vkashka.Wall.Record.t) =
           | Vkashka.Media.Attachment.Photo photo ->
               last_size photo.sizes
               |> Option.map (fun (size : Vkashka.Media.Photo.size) -> size.url)
+          | Vkashka.Media.Attachment.Video video ->
+              last_size video.preview
+              |> Option.map (fun (img : Vkashka.Media.Video.image) -> img.url)
           | _ -> None)
         post.attachments
     in
