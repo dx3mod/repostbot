@@ -15,7 +15,8 @@ let watch_new_posts () =
         let post =
           List.find_opt
             (fun (p : Cache.post) ->
-              p.id = r.id && r.date > Cache.(p.last_modification))
+              let date = Option.value r.edited ~default:r.date in 
+              p.id = r.id && date > Cache.(p.last_modification))
             cached_posts
         in
 
@@ -77,7 +78,7 @@ let main =
         Cache.add_post Api.cache
           {
             id = r.id;
-            last_modification = r.date;
+            last_modification = Option.value r.edited ~default:r.date;
             message_id = message.result.message_id;
           };
 
