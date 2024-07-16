@@ -7,9 +7,9 @@
 (source
  (github dx3mod/repostbot))
 
-(authors "Mihail Lopatin <dx3mod@bk.ru>")
+(authors "Mikhail Lopatin <dx3mod@bk.ru>")
 
-(maintainers "Mihail Lopatin <dx3mod@bk.ru>")
+(maintainers "Mikhail Lopatin <dx3mod@bk.ru>")
 
 (license MIT)
 
