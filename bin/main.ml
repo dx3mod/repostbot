@@ -15,8 +15,7 @@ let watch_new_posts () =
         let post =
           List.find_opt
             (fun (p : Cache.post) ->
-              let date = Option.value r.edited ~default:r.date in 
-              p.id = r.id && date > Cache.(p.last_modification))
+              p.id = r.id && r.date > Cache.(p.last_modification))
             cached_posts
         in
 
@@ -96,9 +95,15 @@ let main =
         let%lwt _ =
           Printf.printf "edit post %d\n" r.id;
 
-          Api.TgBot.edit_message_text ~chat_id:Api.target_chat
-            ~message_id:(string_of_int p.message_id)
-            r.text
+          try
+            let%lwt _ =
+              Api.TgBot.edit_message_text ~chat_id:Api.target_chat
+                ~message_id:(string_of_int p.message_id)
+                r.text
+            in
+
+            Lwt.return_unit
+          with Failure msg -> Lwt_io.eprintlf "failure %s" msg
         in
         Lwt.return_unit)
       updated_posts

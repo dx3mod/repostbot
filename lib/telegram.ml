@@ -46,17 +46,28 @@ module Bot (T : Token) = struct
   end
 
   module Response = struct
-    type 'a t = { ok : bool; result : 'a } [@@deriving of_yojson]
+    type 'a t = { ok : bool; result : 'a }
+    [@@deriving of_yojson { strict = false }]
 
     type message = { message_id : int }
     [@@deriving of_yojson { strict = false }]
   end
 
   let send_request ~p uri =
-    let open Lwt in
-    Client.get uri >>= fun (_, body) ->
-    Cohttp_lwt.Body.to_string body >|= Yojson.Safe.from_string >|= fun json ->
-    Result.get_ok @@ p json
+    let open Lwt.Syntax in
+    let* _, body = Client.get uri in
+    let* body = Cohttp_lwt.Body.to_string body in
+    let json = Yojson.Safe.from_string body in
+
+    Lwt.return
+    @@
+    match p json with
+    | Ok x -> x
+    | Error e ->
+        failwith
+        (* don't print uri (it's have token) *)
+        @@ Printf.sprintf "(send_request) uri: %s  error: %s; body: %s"
+             (Uri.to_string uri) e body
 
   let send_dice ~chat_id =
     send_request ~p:Response.(of_yojson message_of_yojson)
