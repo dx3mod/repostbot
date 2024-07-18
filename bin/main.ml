@@ -1,14 +1,15 @@
 open Lib
 
 let watch_new_posts () =
-  let%lwt wall = Api.Vk.Wall.get (`Domain Api.target_user) in
+  let%lwt wall = Global.Vk.Wall.get (`Domain Global.target_user) in
   let new_posts =
     List.filter
-      (fun (r : Vkashka.Wall.Record.t) -> r.id > Cache.last_post_id Api.cache)
+      (fun (r : Vkashka.Wall.Record.t) ->
+        r.id > Cache.last_post_id Global.cache)
       wall.items
   in
   let updated_posts =
-    let cached_posts = Cache.posts Api.cache in
+    let cached_posts = Cache.posts Global.cache in
 
     List.filter_map
       (fun (r : Vkashka.Wall.Record.t) ->
@@ -26,8 +27,6 @@ let watch_new_posts () =
   Lwt.return (List.rev new_posts, updated_posts)
 
 let repost (post : Vkashka.Wall.Record.t) =
-  Printf.printf "new post: %d\n" post.id;
-
   let attachments_to_string (attachments : Vkashka.Media.Attachment.t list) =
     String.concat ", "
     @@ List.map
@@ -41,7 +40,7 @@ let repost (post : Vkashka.Wall.Record.t) =
   let last_size xs = List.fold_left (fun _ x -> Some x) None xs in
 
   let%lwt message =
-    Api.TgBot.send_message ~chat_id:Api.target_chat
+    Global.TgBot.send_message ~chat_id:Global.target_chat
       (post.text ^ "\n\n" ^ attachments_to_string post.attachments)
   in
 
@@ -59,55 +58,65 @@ let repost (post : Vkashka.Wall.Record.t) =
         post.attachments
     in
 
-    Api.TgBot.send_photos ~chat_id:Api.target_chat photo_urls
+    Global.TgBot.send_photos ~chat_id:Global.target_chat photo_urls
   in
 
   Lwt.return message
 
 let main =
+  Lwt_io.printlf "Get new posts and updates %s" Global.target_user;%lwt
+
   let%lwt new_posts, updated_posts = watch_new_posts () in
 
-  print_endline "start repost posts";
+  Lwt_io.printlf "Start repost process";%lwt
 
-  let%lwt _ =
-    Lwt_list.iter_s
-      (fun (r : Vkashka.Wall.Record.t) ->
-        let%lwt message = repost r in
+  Lwt_list.iter_s
+    (fun (r : Vkashka.Wall.Record.t) ->
+      Lwt_io.printlf " + new post id:%d" r.id;%lwt
 
-        Cache.add_post Api.cache
-          {
-            id = r.id;
-            last_modification = Option.value r.edited ~default:r.date;
-            message_id = message.result.message_id;
-          };
+      let%lwt message = repost r in
 
-        Lwt.return_unit)
-      new_posts
-  in
+      Cache.add_post Global.cache
+        {
+          id = r.id;
+          last_modification = Option.value r.edited ~default:r.date;
+          message_id = message.result.message_id;
+        };
 
-  Cache.save Api.cache;
+      Lwt.return_unit)
+    new_posts;%lwt
 
-  print_endline "start update";
+  Cache.save Global.cache;
 
-  let%lwt _ =
-    Lwt_list.iter_s
-      (fun ((r : Vkashka.Wall.Record.t), (p : Cache.post)) ->
+  print_endline "Update posts";
+
+  Lwt_list.iter_s
+    (fun ((r : Vkashka.Wall.Record.t), (p : Cache.post)) ->
+      let last_modification_date =
+        Option.value r.edited ~default:p.last_modification
+        |> float_of_int |> Unix.localtime
+        |> fun t ->
+        Printf.sprintf "%04d-%02d-%02d" (t.tm_year + 1900) (t.tm_mon + 1)
+          t.tm_mday
+      in
+
+      let new_text =
+        Printf.sprintf "%s\nEdited at %s." r.text last_modification_date
+      in
+
+      try%lwt
         let%lwt _ =
-          Printf.printf "edit post %d\n" r.id;
-
-          try
-            let%lwt _ =
-              Api.TgBot.edit_message_text ~chat_id:Api.target_chat
-                ~message_id:(string_of_int p.message_id)
-                r.text
-            in
-
-            Lwt.return_unit
-          with Failure msg -> Lwt_io.eprintlf "failure %s" msg
+          Global.TgBot.edit_message_text ~chat_id:Global.target_chat
+            ~message_id:(string_of_int p.message_id)
+            new_text
         in
-        Lwt.return_unit)
-      updated_posts
-  in
+
+        Lwt_io.printlf " ~ edit post id:%d" r.id
+      with Failure msg ->
+        Lwt_io.eprintlf "Failed to edit message. Error: %s" msg)
+    updated_posts;%lwt
+
+  Lwt_io.printlf "Last post id: %d" Global.cache.cache.last_post_id;%lwt
 
   Lwt.return_unit
 

@@ -63,11 +63,7 @@ module Bot (T : Token) = struct
     @@
     match p json with
     | Ok x -> x
-    | Error e ->
-        failwith
-        (* don't print uri (it's have token) *)
-        @@ Printf.sprintf "(send_request) uri: %s  error: %s; body: %s"
-             (Uri.to_string uri) e body
+    | Error e -> failwith @@ Printf.sprintf "parse response: %s; %s" body e
 
   let send_dice ~chat_id =
     send_request ~p:Response.(of_yojson message_of_yojson)
