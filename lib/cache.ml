@@ -18,6 +18,10 @@ let add_post c post =
   c.cache.last_post_id <- post.id;
   c.cache.posts <- posts
 
+let edit_post c post =
+  c.cache.posts <-
+    List.map (fun p -> if p.id = post.id then post else p) c.cache.posts
+
 let posts c = c.cache.posts
 let iter f c = List.iter f (posts c)
 let last_post_id c = c.cache.last_post_id

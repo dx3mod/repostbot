@@ -87,21 +87,25 @@ let main =
     new_posts;%lwt
 
   Cache.save Global.cache;
+  print_endline "Save cache";
 
   print_endline "Update posts";
 
   Lwt_list.iter_s
     (fun ((r : Vkashka.Wall.Record.t), (p : Cache.post)) ->
-      let last_modification_date =
+      let last_modification =
         Option.value r.edited ~default:p.last_modification
-        |> float_of_int |> Unix.localtime
-        |> fun t ->
+      in
+
+      (* fuck unix time *)
+      let last_modification_date =
+        last_modification |> float_of_int |> Unix.localtime |> fun t ->
         Printf.sprintf "%04d-%02d-%02d" (t.tm_year + 1900) (t.tm_mon + 1)
           t.tm_mday
       in
 
       let new_text =
-        Printf.sprintf "%s\nEdited at %s." r.text last_modification_date
+        Printf.sprintf "%s\n\nEdited at %s." r.text last_modification_date
       in
 
       try%lwt
@@ -111,10 +115,15 @@ let main =
             new_text
         in
 
+        Cache.edit_post Global.cache { p with last_modification };
+
         Lwt_io.printlf " ~ edit post id:%d" r.id
       with Failure msg ->
         Lwt_io.eprintlf "Failed to edit message. Error: %s" msg)
     updated_posts;%lwt
+
+  Cache.save Global.cache;
+  print_endline "Save cache";
 
   Lwt_io.printlf "Last post id: %d" Global.cache.cache.last_post_id;%lwt
 

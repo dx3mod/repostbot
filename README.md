@@ -20,4 +20,9 @@ TARGET_CHAT="..."
 CACHE_FILE="..."
 ```
 
+Minimal cache file:
+```clojure
+((last_post_id ...) (posts ()))
+```
+
 [EnvFile]: https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#EnvironmentFile=
