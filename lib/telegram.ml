@@ -2,6 +2,8 @@ module type Token = sig
   val token : string
 end
 
+exception Parser_response_error of { body : string; message : string }
+
 let token value =
   (module struct
     let token = value
@@ -63,7 +65,7 @@ module Bot (T : Token) = struct
     @@
     match p json with
     | Ok x -> x
-    | Error e -> failwith @@ Printf.sprintf "parse response: %s; %s" body e
+    | Error message -> raise (Parser_response_error { body; message })
 
   let send_dice ~chat_id =
     send_request ~p:Response.(of_yojson message_of_yojson)

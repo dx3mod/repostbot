@@ -68,27 +68,34 @@ let main =
 
   let%lwt new_posts, updated_posts = watch_new_posts () in
 
+  (* REPOST NEW POSTS *)
   Lwt_io.printlf "Start repost process";%lwt
 
   Lwt_list.iter_s
     (fun (r : Vkashka.Wall.Record.t) ->
       Lwt_io.printlf " + new post id:%d" r.id;%lwt
 
-      let%lwt message = repost r in
+      try%lwt
+        let%lwt message = repost r in
 
-      Cache.add_post Global.cache
-        {
-          id = r.id;
-          last_modification = Option.value r.edited ~default:r.date;
-          message_id = message.result.message_id;
-        };
+        Cache.add_post Global.cache
+          {
+            id = r.id;
+            last_modification = Option.value r.edited ~default:r.date;
+            message_id = message.result.message_id;
+          };
 
-      Lwt.return_unit)
+        Lwt.return_unit
+      with Telegram.Parser_response_error { message; body } ->
+        Lwt_io.eprintlf "Failed repost %d:\n  %s \n  body: %s)" r.id message
+          body;%lwt
+        Lwt_io.flush Lwt_io.stderr)
     new_posts;%lwt
 
   Cache.save Global.cache;
   print_endline "Save cache";
 
+  (* EDIT UPDATED POSTS *)
   print_endline "Update posts";
 
   Lwt_list.iter_s
