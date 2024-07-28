@@ -24,4 +24,5 @@
   vkashka
   sexplib
   lwt_ppx
-  ppx_deriving_yojson))
+  ppx_deriving_yojson
+  dolog))

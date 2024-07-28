@@ -4,6 +4,8 @@ end
 
 exception Parser_response_error of { body : string; message : string }
 
+let limit_message_chapters = 4096
+
 let token value =
   (module struct
     let token = value
