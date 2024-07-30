@@ -1,5 +1,5 @@
 (library
  (name lib)
- (libraries lwt unix vkashka sexplib telegram)
+ (libraries lwt vkashka sexplib telegram)
  (preprocess
   (pps lwt_ppx ppx_sexp_conv)))
