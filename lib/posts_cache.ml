@@ -12,7 +12,7 @@ let add_post cache post = { cache with posts = post :: cache.posts }
 
 let edit_post cache post =
   {
-    cache with
+    last_record_id = post.vk_record_id;
     posts =
       List.map
         (fun p -> if p.vk_record_id = post.vk_record_id then post else p)
