@@ -1,5 +1,5 @@
 (library
  (name lib)
- (libraries lwt cohttp-lwt-unix unix vkashka sexplib)
+ (libraries lwt unix vkashka sexplib telegram)
  (preprocess
-  (pps lwt_ppx ppx_sexp_conv ppx_deriving_yojson)))
+  (pps lwt_ppx ppx_sexp_conv)))
