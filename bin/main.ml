@@ -32,14 +32,18 @@ let filter_edited_records_and_posts ~posts records =
     posts
 
 let crop_text input =
-  let pos = ref 0 in
+  let input_length = String.length input - 1 in
 
-  for i = 0 to String.length input - 1 do
-    if i < Telegram.limit_message_chapters then
-      if String.unsafe_get input i = ' ' then pos := i
-  done;
+  if input_length < Telegram.limit_message_chapters then input
+  else
+    let last_whitespace_index = ref 0 in
 
-  String.sub input 0 !pos
+    for i = 0 to input_length do
+      if i < Telegram.limit_message_chapters then
+        if String.unsafe_get input i = ' ' then last_whitespace_index := i
+    done;
+
+    String.sub input 0 !last_whitespace_index
 
 let repost (post : Vkashka.Wall.Record.t) =
   let attachments_to_string (attachments : Vkashka.Media.Attachment.t list) =
