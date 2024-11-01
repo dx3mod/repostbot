@@ -20,7 +20,7 @@
   ocaml
   dune
   lwt
-  cohttp-lwt-unix
+  tgbot
   vkashka
   sexplib
   lwt_ppx

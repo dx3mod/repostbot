@@ -1,6 +1,6 @@
 (executable
  (public_name repostbot)
  (name main)
- (libraries lib vkashka dolog)
+ (libraries lib vkashka tgbot cohttp-lwt-unix dolog)
  (preprocess
   (pps lwt_ppx)))
