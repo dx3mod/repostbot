@@ -1,191 +1,153 @@
 open Lib
-module Log = Dolog.Log
 
-let get_env_vars () =
-  try Project_env.capture ()
-  with Not_found ->
-    Log.error "Не найдены необходимые переменные окружения";
-    exit 1
+module type Repost_bot_depends = sig
+  module Vk_api : Vkashka.S
+  module Tg_bot_api : Tgbot.Bot.S
 
-let envs = get_env_vars ()
+  val cache : Posts_cache.t
+  val project_env : Project_env.t
+end
 
-module Vk_api =
-  Vkashka.Api
-    (Cohttp_lwt_unix.Client)
-    ((val Vkashka.access_token envs.vk_token))
+module Repost_bot (Depends : Repost_bot_depends) = struct
+  open! Depends
 
-module Bot = (val Tgbot.Bot.make ~token:envs.tg_token)
-
-let filter_new_vk_records ~last_record_id records =
-  List.filter (fun (r : Vkashka.Wall.Record.t) -> r.id > last_record_id) records
-  |> List.rev
-
-let filter_edited_records_and_posts ~posts records =
-  List.filter_map
-    (fun (post : Posts_cache.post) ->
-      List.find_opt
-        (fun (record : Vkashka.Wall.Record.t) ->
-          record.id = post.vk_record_id
-          && post.last_modify < Utils.last_date_vk_record record)
-        records
-      |> Option.map (fun r -> (r, post)))
-    posts
-
-let crop_text input =
-  let input_length = String.length input - 1 in
-
-  if input_length < 4055 then input
-  else
-    let last_whitespace_index = ref 0 in
-
-    for i = 0 to input_length do
-      if i < 4055 then
-        if String.unsafe_get input i = ' ' then last_whitespace_index := i
-    done;
-
-    String.sub input 0 !last_whitespace_index
-
-let repost (post : Vkashka.Wall.Record.t) =
-  let attachments_to_string (attachments : Vkashka.Media.Attachment.t list) =
-    String.concat ","
-    @@ List.map
-         (function
-           | Vkashka.Media.Attachment.Photo _ -> "photo"
-           | Vkashka.Media.Attachment.Video _ -> "video"
-           | Vkashka.Media.Attachment.Other other -> other)
-         attachments
-  in
-
-  let last_size xs = List.fold_left (fun _ x -> Some x) None xs in
-
-  let%lwt message =
-    Bot.send_message ~chat_id:envs.targets.tg_chat_id
-      (crop_text post.text ^ "\n\n" ^ attachments_to_string post.attachments)
-  in
-
-  let%lwt _ =
-    let photo_urls =
-      List.filter_map
-        (function
-          | Vkashka.Media.Attachment.Photo photo ->
-              last_size photo.sizes
-              |> Option.map (fun (size : Vkashka.Media.Photo.size) -> size.url)
-          | Vkashka.Media.Attachment.Video video ->
-              last_size video.preview
-              |> Option.map (fun (img : Vkashka.Media.Video.image) -> img.url)
-          | _ -> None)
-        post.attachments
+  let pull_new_and_edited_vk_posts () =
+    let%lwt Vkashka.Wall.{ items = posts; _ } =
+      Vk_api.Wall.get (`Domain project_env.targets.vk_user)
     in
 
-    Bot.send_media_group ~chat_id:envs.targets.tg_chat_id
-      (List.map
-         (fun url -> Tgbot_api.Methods.Media.Photo (`Url url))
-         photo_urls)
-  in
+    let new_posts =
+      List.filter
+        (fun (post : Vkashka.Wall.Record.t) -> post.id > cache.last_record_id)
+        posts
+    in
 
-  Lwt.return message
+    let edited_posts =
+      List.filter_map
+        (fun (cached_post : Posts_cache.post) ->
+          List.find_opt
+            (fun (vk_post : Vkashka.Wall.Record.t) ->
+              vk_post.id = cached_post.vk_record_id
+              && cached_post.last_modify < Utils.last_date_vk_record vk_post)
+            posts
+          |> Option.map (fun vk_post -> (vk_post, cached_post)))
+        cache.posts
+    in
 
-(* let format_unix_time time =
-  time |> float_of_int |> Unix.localtime |> fun t ->
-  Printf.sprintf "%04d-%02d-%02d %02d:%02d" (t.tm_year + 1900) (t.tm_mon + 1)
-    t.tm_mday t.tm_hour t.tm_min *)
+    Lwt.return (new_posts, edited_posts)
 
-let edit_post ~(post : Posts_cache.post) ~(record : Vkashka.Wall.Record.t) =
-  let _ = post,record in
-  (* let%lwt _ =
-    Bot.edit_message_text ~chat_id:envs.targets.tg_chat_id
-      ~message_id:post.tg_message_id
-    @@ Printf.sprintf "%s\n\nedited at %s" (crop_text record.text)
-         (format_unix_time @@ Utils.last_date_vk_record record)
-  in *)
-  Lwt.return_unit
+  let crop_text input =
+    let input_length = String.length input - 1 in
 
-let main () =
-  let cache = Posts_cache.load_from_file envs.cache_file in
+    if input_length < 4055 then input
+    else
+      let last_whitespace_index = ref 0 in
 
-  Log.info "Получение постов со стены (пользователя %s)" envs.targets.vk_user;
+      for i = 0 to input_length do
+        if i < 4055 then
+          if String.unsafe_get input i = ' ' then last_whitespace_index := i
+      done;
 
-  let%lwt vk_records =
-    Vk_api.Wall.get (`Domain envs.targets.vk_user)
-    |> Lwt.map (fun (resp : Vkashka.Wall.records) -> resp.items)
-  in
+      String.sub input 0 !last_whitespace_index
 
-  (* Repost new posts. *)
-  let new_records =
-    filter_new_vk_records ~last_record_id:cache.last_record_id vk_records
-  in
+  let repost_post (vk_post : Vkashka.Wall.Record.t) =
+    let attachments_to_string (attachments : Vkashka.Media.Attachment.t list) =
+      String.concat ","
+      @@ List.map
+           (function
+             | Vkashka.Media.Attachment.Photo _ -> "photo"
+             | Vkashka.Media.Attachment.Video _ -> "video"
+             | Vkashka.Media.Attachment.Other other -> other)
+           attachments
+    in
 
-  Log.debug "Начат процесс репостинга";
+    let last_size xs = List.fold_left (fun _ x -> Some x) None xs in
 
-  let%lwt cache =
-    Lwt_list.fold_left_s
-      (fun (cache : Posts_cache.t) (record : Vkashka.Wall.Record.t) ->
-        Log.info "Найдена новая запись (id: %d)" record.id;
+    let%lwt message =
+      Tg_bot_api.send_message ~chat_id:project_env.targets.tg_chat_id
+        (crop_text vk_post.text ^ "\n\n"
+        ^ attachments_to_string vk_post.attachments)
+    in
 
+    let%lwt _ =
+      let photo_urls =
+        List.filter_map
+          (function
+            | Vkashka.Media.Attachment.Photo photo ->
+                last_size photo.sizes
+                |> Option.map (fun (size : Vkashka.Media.Photo.size) ->
+                       size.url)
+            | Vkashka.Media.Attachment.Video video ->
+                last_size video.preview
+                |> Option.map (fun (img : Vkashka.Media.Video.image) -> img.url)
+            | _ -> None)
+          vk_post.attachments
+      in
+
+      Tg_bot_api.send_media_group ~chat_id:project_env.targets.tg_chat_id
+        (List.map
+           (fun url -> Tgbot_api.Methods.Media.Photo (`Url url))
+           photo_urls)
+    in
+
+    Lwt.return message
+
+  let start () =
+    let%lwt new_posts, _ = pull_new_and_edited_vk_posts () in
+
+    Lwt_list.iter_s
+      (fun vk_post ->
         try%lwt
-          Log.debug "Репост поста %d" record.id;
-          let%lwt message = repost record in
+          let%lwt posted_tg_message = repost_post vk_post in
 
-          Lwt.return
-          @@ Posts_cache.add_post cache
-               Posts_cache.
-                 {
-                   vk_record_id = record.id;
-                   tg_message_id = message.message_id;
-                   last_modify = Option.value record.edited ~default:record.date;
-                 }
-        with Tgbot.Client.Bad_response _ ->
-          (* Log.error "Не удалось зарепостить пост: %s; body: %s" message body; *)
-          Lwt.return cache)
-      cache new_records
+          Posts_cache.add_post cache
+            Posts_cache.
+              {
+                vk_record_id = vk_post.id;
+                tg_message_id = posted_tg_message.message_id;
+                last_modify = Option.value vk_post.edited ~default:vk_post.date;
+              }
+          |> ignore;
+
+          Lwt.return_unit
+        with _ -> Lwt_io.printlf "Не удалось зарепостить %d" vk_post.id)
+      new_posts;%lwt
+
+    Posts_cache.save_to_file cache ~path:project_env.cache_file;
+
+    Lwt.return_unit
+end
+
+(* Run *)
+
+module type Runnable = sig
+  val start : unit -> unit Lwt.t
+end
+
+let make_repost_bot (project_env : Project_env.t) =
+  let vk_access_token = Vkashka.access_token project_env.vk_token in
+  let module Vk_api =
+    Vkashka.Make (Cohttp_lwt_unix.Client) ((val vk_access_token))
   in
+  let (module Tg_bot_api) = Tgbot.Bot.make ~token:project_env.tg_token in
 
-  Log.debug "Закончен процесс репостинга";
+  (module Repost_bot (struct
+    module Vk_api = Vk_api
+    module Tg_bot_api = Tg_bot_api
 
-  (* Edit updated posts. *)
-  let edited_records =
-    filter_edited_records_and_posts ~posts:cache.posts vk_records
-  in
-
-  Log.debug "Начат процесс обновления";
-
-  let%lwt cache =
-    Lwt_list.fold_left_s
-      (fun cache ((record : Vkashka.Wall.Record.t), (post : Posts_cache.post)) ->
-        try%lwt
-          Log.debug "Попытка обновить пост (id: %d)" record.id;
-          edit_post ~post ~record;%lwt
-
-          Log.info "Обновлён пост (id: %d)" record.id;
-
-          Lwt.return
-          @@ Posts_cache.edit_post cache
-               { post with last_modify = Utils.last_date_vk_record record }
-        with Tgbot.Client.Bad_response _ ->
-          (* Log.error "Не удалось зарепостить пост: %s; body: %s" message body; *)
-          Lwt.return cache)
-      cache edited_records
-  in
-
-  (* let%lwt  *)
-  Log.debug "Закончен процесс обновления";
-
-  (* Save cache. *)
-  Log.debug "Начато сохранение кеша";
-  Posts_cache.save_to_file ~path:envs.cache_file cache;
-  Log.info "Кеш был сохранён (по пути %s)" envs.cache_file;
-
-  Log.info "Последний ID записи: %d" cache.last_record_id;
-
-  Lwt.return_unit
+    let cache = Posts_cache.load_from_file project_env.cache_file
+    let project_env = project_env
+  end) : Runnable)
 
 let () =
-  Log.set_log_level @@ if envs.debug then Log.DEBUG else Log.INFO;
-  Log.set_output stdout;
+  let project_env = Project_env.capture () in
 
-  if Unix.isatty Unix.stdout then Log.color_on ()
-  else
-    Log.set_prefix_builder (fun l ->
-        Printf.sprintf "%s: " @@ Log.string_of_level l);
+  let (module Repost_bot) = make_repost_bot project_env in
 
-  Lwt_main.run @@ main ()
+  let rec interval duration f =
+    Lwt_unix.sleep duration;%lwt
+    f ();%lwt
+    interval duration f
+  in
+
+  Lwt_main.run @@ interval 10. Repost_bot.start
