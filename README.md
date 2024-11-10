@@ -18,6 +18,8 @@ TARGET_USER="..."
 TARGET_CHAT="..."
 
 CACHE_FILE="..."
+
+INTERVAL=10
 ```
 
 Minimal cache file:

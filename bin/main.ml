@@ -34,7 +34,7 @@ module Repost_bot (Depends : Repost_bot_depends) = struct
         cache.posts
     in
 
-    Lwt.return (new_posts, edited_posts)
+    Lwt.return (List.rev new_posts, edited_posts)
 
   let crop_text input =
     let input_length = String.length input - 1 in
@@ -93,6 +93,8 @@ module Repost_bot (Depends : Repost_bot_depends) = struct
     Lwt.return message
 
   let start () =
+    Lwt_io.printlf "Start reposting";%lwt
+
     let%lwt new_posts, _ = pull_new_and_edited_vk_posts () in
 
     Lwt_list.iter_s
@@ -110,44 +112,47 @@ module Repost_bot (Depends : Repost_bot_depends) = struct
           |> ignore;
 
           Lwt.return_unit
-        with _ -> Lwt_io.printlf "Не удалось зарепостить %d" vk_post.id)
+        with _ ->
+          Lwt_io.printlf "Failed to repost VK post with ID %d!" vk_post.id)
       new_posts;%lwt
 
     Posts_cache.save_to_file cache ~path:project_env.cache_file;
 
-    Lwt.return_unit
+    Lwt_io.printlf "Finish reposting"
 end
 
 (* Run *)
 
-module type Runnable = sig
-  val start : unit -> unit Lwt.t
-end
-
-let make_repost_bot (project_env : Project_env.t) =
+let make_repost_bot_depends (project_env : Project_env.t) =
   let vk_access_token = Vkashka.access_token project_env.vk_token in
   let module Vk_api =
     Vkashka.Make (Cohttp_lwt_unix.Client) ((val vk_access_token))
   in
   let (module Tg_bot_api) = Tgbot.Bot.make ~token:project_env.tg_token in
 
-  (module Repost_bot (struct
+  (module struct
     module Vk_api = Vk_api
     module Tg_bot_api = Tg_bot_api
 
     let cache = Posts_cache.load_from_file project_env.cache_file
     let project_env = project_env
-  end) : Runnable)
+  end : Repost_bot_depends)
 
 let () =
   let project_env = Project_env.capture () in
 
-  let (module Repost_bot) = make_repost_bot project_env in
-
+  let (module Repost_bot_depends) = make_repost_bot_depends project_env in
+  let module Repost_bot = Repost_bot (Repost_bot_depends) in
   let rec interval duration f =
     Lwt_unix.sleep duration;%lwt
     f ();%lwt
     interval duration f
   in
 
-  Lwt_main.run @@ interval 10. Repost_bot.start
+  Sys.catch_break true;
+  try
+    Lwt_main.run
+    @@ interval (float_of_int project_env.interval) Repost_bot.start
+  with Sys.Break ->
+    Posts_cache.save_to_file Repost_bot_depends.cache
+      ~path:project_env.cache_file

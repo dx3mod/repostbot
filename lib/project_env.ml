@@ -4,6 +4,7 @@ type t = {
   targets : targets;
   cache_file : string;
   debug : bool;
+  interval : int;
 }
 
 and targets = { vk_user : string; tg_chat_id : int }
@@ -20,5 +21,8 @@ let capture () =
   let debug =
     match Sys.getenv_opt "DEBUG" with Some ("1" | "true") -> true | _ -> false
   in
+  let interval =
+    Sys.getenv_opt "INTERVAL" |> Option.fold ~none:(60 * 2) ~some:int_of_string
+  in
 
-  { tg_token; vk_token; targets; cache_file; debug }
+  { tg_token; vk_token; targets; cache_file; debug; interval }
