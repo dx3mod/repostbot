@@ -1,9 +1,0 @@
-[Unit]
-Requires=repostbot.service
-
-[Timer]
-Unit=repostbot.service
-OnCalendar=*-*-* *:30:00
-
-[Install]
-WantedBy=timers.target

@@ -2,9 +2,6 @@
 Wants=repostbot.timer
 
 [Service]
-Type=oneshot
+Type=simple
 EnvironmentFile=
 ExecStart=/usr/bin/env repostbot
-
-[Install]
-WantedBy=timers.target
