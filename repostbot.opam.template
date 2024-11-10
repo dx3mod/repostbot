@@ -1,3 +1,5 @@
 pin-depends: [
   [ "vkashka.dev" "git+https://github.com/dx3mod/vkashka.git" ]
+  [ "tgbot-api.dev" "git+https://github.com/dx3mod/tgbot.git" ]
+  [ "tgbot.dev" "git+https://github.com/dx3mod/tgbot.git" ]
 ]
