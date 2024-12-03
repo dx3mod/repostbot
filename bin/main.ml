@@ -6,7 +6,7 @@ module type Repost_bot_depends = sig
 
   val cache : Posts_cache.t
   val project_env : Project_env.t
-end
+end 
 
 module Repost_bot (Depends : Repost_bot_depends) = struct
   open! Depends
